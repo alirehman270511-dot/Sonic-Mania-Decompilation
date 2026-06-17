@@ -1,58 +1,39 @@
-  mania-android-shared-objects:
-    runs-on: ubuntu-latest
+name: Build Mania
+
+on:
+  push:
+    paths:
+      - dependencies/**
+      - SonicMania/**
+      - .github/workflows/build.yml
+      - CMakeLists.txt
+    branches:
+      - master
+  workflow_dispatch: # Added so you can also trigger this build manually
+
+env:
+  GENERAL_FLAGS: "-DWITH_RSDK=OFF -DCMAKE_BUILD_TYPE=Release"
+  V5_FLAGS: "-DRETRO_REVISION=2"
+  V5U_FLAGS: "-DRETRO_REVISION=3"
+  GENERAL_WIN_FLAGS: "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+  WIN32_FLAGS: "-DVCPKG_TARGET_TRIPLET=x86-windows-static -A Win32"
+  WIN64_FLAGS: "-DVCPKG_TARGET_TRIPLET=x64-windows-static"
+
+jobs:
+  mania-windows:
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      # Install the Android NDK toolchain
-      - name: Setup Android NDK
-        id: setup-ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r25c # Stable NDK version for retro engine compilation
-
-      # Build 64-bit (arm64-v8a)
-      - name: Build ARM64 Shared Object
+      - name: Build Mania
         run: |
-          cmake -B build_arm64 \
-            -DCMAKE_TOOLCHAIN_FILE=${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-21 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DWITH_RSDK=OFF \
-            -DRETRO_REVISION=3
-          cmake --build build_arm64 --parallel
-
-      # Build 32-bit (armeabi-v7a)
-      - name: Build ARMv7 Shared Object
-        run: |
-          cmake -B build_armv7 \
-            -DCMAKE_TOOLCHAIN_FILE=${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=armeabi-v7a \
-            -DANDROID_PLATFORM=android-21 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DWITH_RSDK=OFF \
-            -DRETRO_REVISION=3
-          cmake --build build_armv7 --parallel
-
-      # Organize files into matching folder names for Apktool M
-      - name: Prepare Artifacts Layout
-        run: |
-          mkdir -p artifacts/arm64-v8a
-          mkdir -p artifacts/armeabi-v7a
-          
-          # Find and copy the generated .so libraries (adjust source name if your target output differs)
-          cp build_arm64/libGame.so ./artifacts/arm64-v8a/ || cp build_arm64/lib*.so ./artifacts/arm64-v8a/
-          cp build_armv7/libGame.so ./artifacts/armeabi-v7a/ || cp build_armv7/lib*.so ./artifacts/armeabi-v7a/
-
-      # Upload the loose binaries as a single zip file
-      - name: Upload Both Architectures
-        uses: actions/upload-artifact@v4
-        with:
-          name: mania-android-so-files
-          path: artifacts/
+          cmake -B build_v5 ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN32_FLAGS}} ${{env.V5_FLAGS}}
+          cmake --build build_v5 --parallel --config Release
+          cmake -B build_v5U ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN32_FLAGS}} ${{env.V5U_FLAGS}}
+          cmake --build build_v5U --parallel --config Release
+      - name: Move artifacts
         run: |
           mkdir artifacts
           mkdir artifacts/v5
@@ -64,6 +45,7 @@
         with:
           name: mania-windows
           path: artifacts
+
   mania-windows-x64:
     runs-on: windows-latest
     steps:
@@ -89,6 +71,7 @@
         with:
           name: mania-windows-x64
           path: artifacts
+
   mania-linux:
     runs-on: ubuntu-latest
     steps:
@@ -114,3 +97,52 @@
         with:
           name: mania-linux
           path: artifacts
+
+  mania-android-shared-objects:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25c
+
+      - name: Build ARM64 Shared Object
+        run: |
+          cmake -B build_arm64 \
+            -DCMAKE_TOOLCHAIN_FILE=${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-21 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DWITH_RSDK=OFF \
+            -DRETRO_REVISION=3
+          cmake --build build_arm64 --parallel
+
+      - name: Build ARMv7 Shared Object
+        run: |
+          cmake -B build_armv7 \
+            -DCMAKE_TOOLCHAIN_FILE=${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=armeabi-v7a \
+            -DANDROID_PLATFORM=android-21 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DWITH_RSDK=OFF \
+            -DRETRO_REVISION=3
+          cmake --build build_armv7 --parallel
+
+      - name: Prepare Artifacts Layout
+        run: |
+          mkdir -p artifacts/arm64-v8a
+          mkdir -p artifacts/armeabi-v7a
+          cp build_arm64/libGame.so ./artifacts/arm64-v8a/ || cp build_arm64/lib*.so ./artifacts/arm64-v8a/
+          cp build_armv7/libGame.so ./artifacts/armeabi-v7a/ || cp build_armv7/lib*.so ./artifacts/armeabi-v7a/
+
+      - name: Upload Both Architectures
+        uses: actions/upload-artifact@v4
+        with:
+          name: mania-android-so-files
+          path: artifacts/
